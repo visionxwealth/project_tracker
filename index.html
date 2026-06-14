@@ -10,8 +10,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-<script> const SUPABASE_URL = "https://lcznqwqaaykkzwuvrdzn.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjem5xd3FhYXlra3p3dXZyZHpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MDU5MTUsImV4cCI6MjA5Njk4MTkxNX0.X2IVwJ6hH20FPPGBS6KxydG_glVoRes4BP9n_2ObNSc";</script>
 <style>
 :root{
   --vx-green:#00C570; --vx-gold:#C9A96E; --vx-black:#000000; --vx-near-black:#0A0A0A;
@@ -96,6 +94,7 @@ tbody tr:hover{background:#fafdfb}
 .prog .num{font-size:12px;color:var(--vx-muted);min-width:34px;text-align:right}
 
 .assignee{display:inline-flex;align-items:center;gap:7px}
+.assignee .avatar+.avatar{margin-left:-8px;border:2px solid #fff}
 .avatar{width:24px;height:24px;border-radius:50%;background:var(--vx-black);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
 .avatar.unassigned{background:#cdd3d8}
 .target.overdue{color:var(--vx-red);font-weight:600}
@@ -117,6 +116,24 @@ tbody tr:hover{background:#fafdfb}
 .slider-row{display:flex;align-items:center;gap:12px}
 .slider-row input[type=range]{flex:1}
 .slider-row .pv{font-family:'IBM Plex Mono',monospace;min-width:48px;text-align:right;font-weight:600;color:var(--vx-green)}
+
+.assignee-checks{display:flex;gap:8px;flex-wrap:wrap}
+.assignee-checks label{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--vx-border);border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:500;user-select:none}
+.assignee-checks label:hover{border-color:var(--vx-green)}
+.assignee-checks input{width:auto;margin:0;accent-color:var(--vx-green)}
+.assignee-checks label.on{background:#e6f7ef;border-color:var(--vx-green);color:#067a4a}
+
+.rt-toolbar{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
+.rt-toolbar button{padding:6px 11px;border:1px solid var(--vx-border);background:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-family:inherit;min-width:34px}
+.rt-toolbar button:hover{border-color:var(--vx-green);background:#f4fdf8}
+.rt-editor{min-height:90px;border:1px solid var(--vx-border);border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.5;overflow:auto;max-height:240px}
+.rt-editor:focus{outline:none;border-color:var(--vx-green)}
+.rt-editor:empty:before{content:attr(data-placeholder);color:#9aa4ad}
+.rt-editor ul,.rt-editor ol{margin:4px 0 4px 22px}
+.advyzon-link{display:inline-flex;align-items:center;gap:4px;color:var(--vx-green);text-decoration:none;font-size:12px;font-weight:600}
+.advyzon-link:hover{text-decoration:underline}
+.notes-cell{max-width:240px;color:var(--vx-muted);font-size:12px;max-height:60px;overflow:hidden}
+.notes-cell *{font-size:12px!important}
 
 footer{background:var(--vx-black);color:#7b848c;padding:20px 32px;font-size:11px;line-height:1.6}
 footer .green{color:var(--vx-green)}
@@ -183,7 +200,7 @@ footer .green{color:var(--vx-green)}
       <div class="field"><label>Project Name</label><input id="f_name" placeholder="e.g. Q3 Client Newsletter"></div>
       <div class="row2">
         <div class="field"><label>Section</label><select id="f_section"></select></div>
-        <div class="field"><label>Assigned To</label><select id="f_assignee"></select></div>
+        <div class="field"><label>Assigned To</label><div id="f_assignee_box" class="assignee-checks"></div></div>
       </div>
       <div class="row2">
         <div class="field"><label>Priority</label><select id="f_priority"><option>High</option><option>Medium</option><option>Low</option></select></div>
@@ -193,8 +210,19 @@ footer .green{color:var(--vx-green)}
         <div class="field"><label>Start Date</label><input type="date" id="f_start"></div>
         <div class="field"><label>Target Date</label><input type="date" id="f_target"></div>
       </div>
+      <div class="field"><label>Advyzon Link</label><input id="f_advyzon" placeholder="https://acdvyzon.com/… (paste the task/workflow URL)"></div>
       <div class="field"><label>Progress</label><div class="slider-row"><input type="range" id="f_progress" min="0" max="100" step="5" value="0" oninput="document.getElementById('pv').textContent=this.value+'%'"><span class="pv" id="pv">0%</span></div></div>
-      <div class="field"><label>Notes</label><textarea id="f_notes" placeholder="Context, blockers, next steps…"></textarea></div>
+      <div class="field"><label>Notes</label>
+        <div class="rt-toolbar">
+          <button type="button" onmousedown="rtCmd(event,'bold')"><b>B</b></button>
+          <button type="button" onmousedown="rtCmd(event,'italic')"><i>I</i></button>
+          <button type="button" onmousedown="rtCmd(event,'underline')"><u>U</u></button>
+          <button type="button" onmousedown="rtCmd(event,'insertUnorderedList')">• List</button>
+          <button type="button" onmousedown="rtCmd(event,'insertOrderedList')">1. List</button>
+          <button type="button" onmousedown="rtCmd(event,'removeFormat')">Clear</button>
+        </div>
+        <div id="f_notes" class="rt-editor" contenteditable="true" data-placeholder="Context, blockers, next steps…"></div>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn" id="deleteBtn" onclick="deleteProject()" style="color:var(--vx-red)">Delete</button>
@@ -214,6 +242,9 @@ footer .green{color:var(--vx-green)}
    Find them in Supabase → Project Settings → API.
    (The anon/public key is safe to use in client-side code.)
    ============================================================ */
+<script> const SUPABASE_URL = "https://lcznqwqaaykkzwuvrdzn.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjem5xd3FhYXlra3p3dXZyZHpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MDU5MTUsImV4cCI6MjA5Njk4MTkxNX0.X2IVwJ6hH20FPPGBS6KxydG_glVoRes4BP9n_2ObNSc";</script>
+<style>
 /* ============================================================ */
 
 const SECTIONS = ["Client Comm (Standard)", "Client Comm (BO)", "Internal Operations", "Client Facing", "Compliance"];
@@ -259,7 +290,7 @@ async function loadData(){
   if(error){ toast('Load error: '+error.message); return; }
   DATA=data.map(r=>({
     id:r.id, code:r.project_code, name:r.name, section:r.section, priority:r.priority,
-    status:r.status, progress:r.progress, assignee:r.assignee||'', start:r.start_date||'',
+    status:r.status, progress:r.progress, assignee:r.assignee||'', advyzon:r.advyzon_url||'', start:r.start_date||'',
     target:r.target_date||'', notes:r.notes||''
   }));
   render();
@@ -280,23 +311,37 @@ function flashSync(){ const l=document.getElementById('syncLabel'); l.textConten
 function initSelects(){
   document.getElementById('fAssignee').innerHTML='<option value="">All Assignees</option>'+USERS.map(u=>`<option>${u}</option>`).join('')+'<option>Unassigned</option>';
   document.getElementById('f_section').innerHTML=SECTIONS.map(s=>`<option>${s}</option>`).join('');
-  document.getElementById('f_assignee').innerHTML='<option value="">Unassigned</option>'+USERS.map(u=>`<option>${u}</option>`).join('');
+  document.getElementById('f_assignee_box').innerHTML=USERS.map(u=>`<label id="al_${u}"><input type="checkbox" value="${u}" onchange="this.closest('label').classList.toggle('on',this.checked)">${u}</label>`).join('');
+}
+function rtCmd(e,cmd){ e.preventDefault(); document.execCommand(cmd,false,null); document.getElementById('f_notes').focus(); }
+function getAssignees(){ return Array.from(document.querySelectorAll('#f_assignee_box input:checked')).map(c=>c.value); }
+function setAssignees(str){
+  const set=(str||'').split(',').map(s=>s.trim()).filter(Boolean);
+  document.querySelectorAll('#f_assignee_box input').forEach(c=>{ c.checked=set.includes(c.value); c.closest('label').classList.toggle('on',c.checked); });
 }
 function fmtDate(d){ if(!d) return '—'; const dt=new Date(d+'T00:00'); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function initials(n){ return n? n.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase():'?'; }
+function renderAssignees(str){
+  const list=(str||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if(!list.length) return '<span class="assignee"><span class="avatar unassigned">?</span>Unassigned</span>';
+  const av=list.map(n=>`<span class="avatar" title="${n}">${initials(n)}</span>`).join('');
+  const names=list.join(', ');
+  return `<span class="assignee">${av}&nbsp;${names}</span>`;
+}
 function overdue(p){ return p.status!=='Complete' && p.target && new Date(p.target+'T00:00') < TODAY; }
 function stClass(s){ return 'st-'+s.replace(/ /g,''); }
 function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+function stripHtml(h){ const d=document.createElement('div'); d.innerHTML=h||''; return (d.textContent||'').trim(); }
 
 function filtered(){
   const q=document.getElementById('search').value.toLowerCase();
   const fp=document.getElementById('fPriority').value, fs=document.getElementById('fStatus').value, fa=document.getElementById('fAssignee').value;
   return DATA.filter(p=>{
-    const hay=(p.name+' '+p.notes+' '+p.assignee+' '+(p.code||'')).toLowerCase();
+    const hay=(p.name+' '+stripHtml(p.notes)+' '+p.assignee+' '+(p.code||'')).toLowerCase();
     if(q&&!hay.includes(q))return false;
     if(fp&&p.priority!==fp)return false;
     if(fs&&p.status!==fs)return false;
-    if(fa){ if(fa==='Unassigned'){if(p.assignee)return false;} else if(p.assignee!==fa)return false; }
+    if(fa){ if(fa==='Unassigned'){if(p.assignee)return false;} else if(!(p.assignee||'').split(',').map(s=>s.trim()).includes(fa))return false; }
     return true;
   });
 }
@@ -328,9 +373,9 @@ function render(){
         <td><span class="pill pri-${p.priority}">${p.priority}</span></td>
         <td><span class="pill ${stClass(p.status)}">${p.status}</span></td>
         <td><div class="prog"><div class="track"><div class="fill" style="width:${p.progress}%"></div></div><span class="num mono">${p.progress}%</span></div></td>
-        <td><span class="assignee"><span class="avatar ${p.assignee?'':'unassigned'}">${initials(p.assignee)}</span>${p.assignee||'Unassigned'}</span></td>
+        <td>${renderAssignees(p.assignee)}</td>
         <td class="target ${overdue(p)?'overdue':''}">${fmtDate(p.target)}</td>
-        <td style="max-width:220px;color:var(--vx-muted);font-size:12px">${p.notes||'—'}</td>
+        <td><div class="notes-cell">${p.notes||'—'}</div>${p.advyzon?`<a class="advyzon-link" href="${p.advyzon}" target="_blank" rel="noopener">↗ Advyzon</a>`:''}</td>
         <td><button class="rowbtn" onclick="openModal('${p.id}')">✎</button></td>
       </tr>`;
     });
@@ -345,18 +390,19 @@ function openModal(id){
   editingId=id||null;
   document.getElementById('modalTitle').textContent=id?'Edit Project':'New Project';
   document.getElementById('deleteBtn').style.display=id?'block':'none';
-  const p=id?DATA.find(x=>x.id===id):{section:SECTIONS[0],priority:'Medium',status:'Not Started',progress:0,assignee:'',start:'',target:'',name:'',notes:''};
+  const p=id?DATA.find(x=>x.id===id):{section:SECTIONS[0],priority:'Medium',status:'Not Started',progress:0,assignee:'',advyzon:'',start:'',target:'',name:'',notes:''};
   document.getElementById('f_id').value=p.id||'';
   document.getElementById('f_name').value=p.name;
   document.getElementById('f_section').value=p.section;
-  document.getElementById('f_assignee').value=p.assignee;
+  setAssignees(p.assignee);
   document.getElementById('f_priority').value=p.priority;
   document.getElementById('f_status').value=p.status;
+  document.getElementById('f_advyzon').value=p.advyzon||'';
   document.getElementById('f_start').value=p.start;
   document.getElementById('f_target').value=p.target;
   document.getElementById('f_progress').value=p.progress;
   document.getElementById('pv').textContent=p.progress+'%';
-  document.getElementById('f_notes').value=p.notes;
+  document.getElementById('f_notes').innerHTML=p.notes||'';
   document.getElementById('overlay').classList.add('open');
 }
 function closeModal(){document.getElementById('overlay').classList.remove('open');}
@@ -366,13 +412,14 @@ async function saveProject(){
   const row={
     name:document.getElementById('f_name').value||'Untitled Project',
     section:document.getElementById('f_section').value,
-    assignee:document.getElementById('f_assignee').value||null,
+    assignee:getAssignees().join(', ')||null,
     priority:document.getElementById('f_priority').value,
     status:document.getElementById('f_status').value,
+    advyzon_url:document.getElementById('f_advyzon').value.trim()||null,
     start_date:document.getElementById('f_start').value||null,
     target_date:document.getElementById('f_target').value||null,
     progress:parseInt(document.getElementById('f_progress').value),
-    notes:document.getElementById('f_notes').value||null,
+    notes:document.getElementById('f_notes').innerHTML||null,
     updated_at:new Date().toISOString()
   };
   document.getElementById('saveBtn').disabled=true;
@@ -408,7 +455,7 @@ function exportPDF(){
     const items=DATA.filter(p=>p.section===sec); if(!items.length)return;
     doc.autoTable({
       startY:y, head:[[sec,'Priority','Status','Progress','Assignee','Target','Notes']],
-      body:items.map(p=>[p.name,p.priority,p.status,p.progress+'%',p.assignee||'Unassigned',fmtDate(p.target),p.notes]),
+      body:items.map(p=>[p.name,p.priority,p.status,p.progress+'%',p.assignee||'Unassigned',fmtDate(p.target),stripHtml(p.notes)]),
       headStyles:{fillColor:[26,37,48],textColor:255,fontSize:8},
       bodyStyles:{fontSize:8,textColor:[40,40,40]},
       columnStyles:{0:{cellWidth:170,fontStyle:'bold'},6:{cellWidth:200}},
