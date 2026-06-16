@@ -169,6 +169,12 @@ tbody tr:hover{background:#fafdfb}
 .cal-edit{background:none;border:none;color:var(--vx-muted);cursor:pointer;font-size:15px;padding:4px 8px;border-radius:6px;flex-shrink:0}
 .cal-edit:hover{background:#eef0f2;color:var(--vx-text)}
 .cal-empty{color:var(--vx-muted);font-size:13px;padding:8px 0}
+.cal-cal-toggle{display:flex;gap:8px;padding:18px 32px 0}
+.cal-tab{padding:9px 18px;border:1px solid var(--vx-border);background:#fff;border-radius:9px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;color:var(--vx-muted)}
+.cal-tab:hover{border-color:var(--vx-green)}
+.cal-tab.on{background:var(--vx-green);color:#042b1b;border-color:var(--vx-green)}
+.proj-chip{display:inline-flex;align-items:center;gap:4px;background:#eef6ff;color:#2563a8;border:1px solid #cfe0f5;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none}
+.proj-chip:hover{background:#dcebff;border-color:#2563a8}
 
 footer{background:var(--vx-black);color:#7b848c;padding:20px 32px;font-size:11px;line-height:1.6}
 footer .green{color:var(--vx-green)}
@@ -228,6 +234,10 @@ footer .green{color:var(--vx-green)}
   </div>
 
   <div id="calendarView" style="display:none">
+    <div class="cal-cal-toggle">
+      <button id="calNBO" class="cal-tab on" onclick="switchCalendar('NBO')">Non-Business Owners</button>
+      <button id="calBO" class="cal-tab" onclick="switchCalendar('BO')">Business Owners</button>
+    </div>
     <div class="cal-toolbar">
       <div class="months" id="monthStrip"></div>
       <div class="cal-controls">
@@ -298,12 +308,18 @@ footer .green{color:var(--vx-green)}
       <div class="field"><label>Task</label><input id="c_title" placeholder="e.g. Q3 estimated tax payment due"></div>
       <div class="row2">
         <div class="field"><label>Month</label><select id="c_month"></select></div>
-        <div class="field"><label>Group</label><select id="c_grp"><option value="C">Client-Facing</option><option value="I">Internal Focus</option></select></div>
+        <div class="field"><label>Group</label><select id="c_grp">
+          <option value="C">Client-Facing</option>
+          <option value="I">Internal Focus</option>
+          <option value="CMP">Compliance</option>
+          <option value="CC">Client Comm</option>
+        </select></div>
       </div>
       <div class="field"><label>Applies To</label><select id="c_scope">
         <option value="recurring">Every year (recurring template)</option>
         <option value="oneyear">This year only</option>
       </select></div>
+      <div class="field"><label>Linked Project <span style="font-weight:400;text-transform:none;color:var(--vx-muted)">(optional)</span></label><select id="c_project"><option value="">— None —</option></select></div>
       <div class="field"><label>Assigned To</label><div id="c_assignee_box" class="assignee-checks"></div></div>
       <div class="field"><label>Notes</label><textarea id="c_notes" placeholder="Details for this task…"></textarea></div>
     </div>
@@ -340,6 +356,8 @@ let CAL_TEMPLATE = [];   // recurring + year-specific tasks
 let CAL_STATE = {};      // keyed by template_id -> {done,assignee,notes,id}
 let CAL_MONTH = (new Date()).getMonth()+1;
 let CAL_YEAR = (new Date()).getFullYear();
+let CAL_VIEW = 'NBO';    // 'NBO' Non-Business Owners, 'BO' Business Owners
+const CAL_GROUPS = [['C','Client-Facing'],['I','Internal Focus'],['CMP','Compliance'],['CC','Client Comm']];
 const MONTHS = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
 
 if(SUPABASE_URL.startsWith("http")){ sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
@@ -393,6 +411,7 @@ async function loadData(){
     target:r.target_date||'', notes:r.notes||''
   }));
   render();
+  if(CAL_TEMPLATE.length) renderCal();  // refresh project chips once projects are loaded
 }
 function subscribeRealtime(){
   if(!sb) return;
@@ -556,6 +575,20 @@ function initCal(){
   document.getElementById('c_assignee_box').innerHTML=USERS.map(u=>`<label><input type="checkbox" value="${u}" onchange="this.closest('label').classList.toggle('on',this.checked)">${u}</label>`).join('');
 }
 
+function switchCalendar(which){
+  CAL_VIEW=which;
+  document.getElementById('calNBO').classList.toggle('on',which==='NBO');
+  document.getElementById('calBO').classList.toggle('on',which==='BO');
+  renderCal();
+}
+
+function populateProjectDropdown(){
+  const sel=document.getElementById('c_project');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— None —</option>'+DATA.map(p=>`<option value="${p.id}">${(p.code?p.code+' · ':'')+p.name}</option>`).join('');
+  sel.value=cur;
+}
+
 async function loadCalendar(){
   if(!sb) return;
   const {data,error}=await sb.from('calendar_template').select('*').order('month').order('grp').order('sort');
@@ -574,9 +607,13 @@ async function loadCalState(){
 }
 
 function calTasksFor(month){
-  // recurring (year_specific null) + those specific to CAL_YEAR
-  return CAL_TEMPLATE.filter(t=>t.month===month && (t.year_specific==null || t.year_specific===CAL_YEAR));
+  // filter by current calendar (BO/NBO) + recurring or this-year
+  return CAL_TEMPLATE.filter(t=>t.month===month
+    && (t.calendar||'NBO')===CAL_VIEW
+    && (t.year_specific==null || t.year_specific===CAL_YEAR));
 }
+
+function groupLabel(g){ const f=CAL_GROUPS.find(x=>x[0]===g); return f?f[1]:g; }
 
 function renderCal(){
   // month strip
@@ -595,19 +632,22 @@ function renderCal(){
   let html=`<div class="cal-monthhead"><h2>${MONTHS[CAL_MONTH]} ${CAL_YEAR}</h2>
     <div class="prog" style="max-width:220px"><div class="track"><div class="fill" style="width:${pct}%"></div></div><span class="num mono">${done}/${tasks.length}</span></div></div>`;
 
-  [['C','Client-Facing'],['I','Internal Focus']].forEach(([g,label])=>{
+  CAL_GROUPS.forEach(([g,label])=>{
     const items=tasks.filter(t=>t.grp===g);
+    if(!items.length) return;  // hide empty groups
     html+=`<div class="cal-group"><h3>${label}</h3>`;
-    if(!items.length){ html+='<div class="cal-empty">No tasks.</div>'; }
     items.forEach(t=>{
       const st=CAL_STATE[t.id]||{done:false,assignee:'',notes:''};
       const av=(st.assignee||'').split(',').map(s=>s.trim()).filter(Boolean).map(n=>`<span class="avatar" title="${n}">${initials(n)}</span>`).join('');
+      const proj=t.project_id?DATA.find(p=>p.id===t.project_id):null;
+      const chip=proj?`<span class="proj-chip" onclick="jumpToProject('${proj.id}')">▦ ${(proj.code?proj.code:proj.name)}</span>`:'';
       html+=`<div class="cal-task ${st.done?'done':''}">
         <input type="checkbox" class="cal-check" ${st.done?'checked':''} onchange="toggleCal('${t.id}',this.checked)">
         <div class="cal-task-body">
           <div class="cal-task-title">${t.title}${t.year_specific?' <span class="cal-tag">'+t.year_specific+' only</span>':''}</div>
           <div class="cal-task-meta">
             ${av?`<span class="cal-assign-inline">${av}&nbsp;${st.assignee}</span>`:'<span class="cal-assign-inline" style="opacity:.6">Unassigned</span>'}
+            ${chip}
           </div>
           ${st.notes?`<div class="cal-task-notes">${st.notes}</div>`:''}
         </div>
@@ -616,7 +656,17 @@ function renderCal(){
     });
     html+='</div>';
   });
+  if(!tasks.length){
+    html+=`<div class="cal-empty" style="padding:40px;text-align:center">No tasks for ${MONTHS[CAL_MONTH]} on the ${CAL_VIEW==='BO'?'Business Owners':'Non-Business Owners'} calendar yet. Use <strong>+ Add Task</strong> to create one.</div>`;
+  }
   document.getElementById('calBody').innerHTML=html;
+}
+
+function jumpToProject(pid){
+  switchView('projects');
+  document.getElementById('search').value='';
+  render();
+  setTimeout(()=>{ openModal(pid); },150);
 }
 
 async function toggleCal(tid,val){
@@ -635,19 +685,21 @@ function openCalModal(tid){
   document.getElementById('calModalTitle').textContent=tid?'Edit Task':'Add Task';
   const t=tid?CAL_TEMPLATE.find(x=>x.id===tid):null;
   const st=tid?(CAL_STATE[tid]||{}):{};
+  populateProjectDropdown();
   document.getElementById('c_id').value=tid||'';
   document.getElementById('c_title').value=t?t.title:'';
   document.getElementById('c_month').value=t?t.month:CAL_MONTH;
   document.getElementById('c_grp').value=t?t.grp:'C';
   document.getElementById('c_scope').value=(t&&t.year_specific)?'oneyear':'recurring';
+  document.getElementById('c_project').value=t&&t.project_id?t.project_id:'';
   // assignees
   const set=(st.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
   document.querySelectorAll('#c_assignee_box input').forEach(c=>{ c.checked=set.includes(c.value); c.closest('label').classList.toggle('on',c.checked); });
   document.getElementById('c_notes').value=st.notes||'';
-  // scope can't change on an existing task (keep simple); disable when editing
-  document.getElementById('c_scope').disabled = !!tid;
-  document.getElementById('c_month').disabled = !!tid;
-  document.getElementById('c_grp').disabled = !!tid;
+  // Month, Group, Applies To are all editable now (unlocked)
+  document.getElementById('c_scope').disabled=false;
+  document.getElementById('c_month').disabled=false;
+  document.getElementById('c_grp').disabled=false;
   document.getElementById('calDeleteBtn').style.display=tid?'block':'none';
   document.getElementById('calOverlay').classList.add('open');
 }
@@ -659,19 +711,26 @@ async function saveCalTask(){
   if(!title){ toast('Enter a task name.'); return; }
   const assignee=Array.from(document.querySelectorAll('#c_assignee_box input:checked')).map(c=>c.value).join(', ')||null;
   const notes=document.getElementById('c_notes').value||null;
+  const month=parseInt(document.getElementById('c_month').value);
+  const grp=document.getElementById('c_grp').value;
+  const scope=document.getElementById('c_scope').value;
+  const project_id=document.getElementById('c_project').value||null;
   document.getElementById('calSaveBtn').disabled=true;
 
   if(calEditingTid){
-    // editing: title stays in template; assignee/notes are per-year state
-    await sb.from('calendar_template').update({title}).eq('id',calEditingTid);
+    // template fields (title, month, group, scope, project) now all editable
+    await sb.from('calendar_template').update({
+      title, month, grp, project_id,
+      year_specific: scope==='oneyear'?CAL_YEAR:null
+    }).eq('id',calEditingTid);
     const ex=CAL_STATE[calEditingTid];
     if(ex&&ex.id){ await sb.from('calendar_state').update({assignee,notes,updated_at:new Date().toISOString()}).eq('id',ex.id); }
     else if(assignee||notes){ await sb.from('calendar_state').insert({template_id:calEditingTid,year:CAL_YEAR,assignee,notes}); }
   } else {
-    const scope=document.getElementById('c_scope').value;
-    const month=parseInt(document.getElementById('c_month').value);
-    const grp=document.getElementById('c_grp').value;
-    const ins=await sb.from('calendar_template').insert({month,grp,sort:999,title,year_specific: scope==='oneyear'?CAL_YEAR:null}).select();
+    const ins=await sb.from('calendar_template').insert({
+      month, grp, sort:999, title, calendar:CAL_VIEW, project_id,
+      year_specific: scope==='oneyear'?CAL_YEAR:null
+    }).select();
     if(ins.error){ document.getElementById('calSaveBtn').disabled=false; toast('Save failed: '+ins.error.message); return; }
     const newId=ins.data[0].id;
     if(assignee||notes){ await sb.from('calendar_state').insert({template_id:newId,year:CAL_YEAR,assignee,notes}); }
@@ -698,10 +757,11 @@ function exportCalPDF(){
   doc.setFillColor(0,0,0); doc.rect(0,0,595,56,'F');
   doc.setTextColor(255,255,255); doc.setFontSize(15); doc.setFont('helvetica','bold');
   doc.text('VisionX Wealth Partners',40,30);
-  doc.setTextColor(0,197,112); doc.setFontSize(10); doc.text(MONTHS[CAL_MONTH]+' '+CAL_YEAR+' — Service Calendar',40,46);
+  const calLabel=CAL_VIEW==='BO'?'Business Owners':'Non-Business Owners';
+  doc.setTextColor(0,197,112); doc.setFontSize(10); doc.text(MONTHS[CAL_MONTH]+' '+CAL_YEAR+' — '+calLabel,40,46);
   const tasks=calTasksFor(CAL_MONTH);
   let y=80;
-  [['C','Client-Facing'],['I','Internal Focus']].forEach(([g,label])=>{
+  CAL_GROUPS.forEach(([g,label])=>{
     const items=tasks.filter(t=>t.grp===g); if(!items.length)return;
     doc.autoTable({
       startY:y, head:[[label,'Done','Assignee','Notes']],
@@ -713,7 +773,7 @@ function exportCalPDF(){
     });
     y=doc.lastAutoTable.finalY+16;
   });
-  doc.save('VisionX_Calendar_'+MONTHS[CAL_MONTH]+'_'+CAL_YEAR+'.pdf');
+  doc.save('VisionX_Calendar_'+CAL_VIEW+'_'+MONTHS[CAL_MONTH]+'_'+CAL_YEAR+'.pdf');
 }
 
 function exportPDF(){
