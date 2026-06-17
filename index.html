@@ -417,8 +417,8 @@ function subscribeRealtime(){
   if(!sb) return;
   sb.channel('all-live')
     .on('postgres_changes',{event:'*',schema:'public',table:'projects'},()=>{ loadData(); flashSync(); })
-    .on('postgres_changes',{event:'*',schema:'public',table:'calendar_template'},()=>{ loadCalendar(); flashSync(); })
-    .on('postgres_changes',{event:'*',schema:'public',table:'calendar_state'},()=>{ loadCalState(); flashSync(); })
+    .on('postgres_changes',{event:'*',schema:'public',table:'cal_items'},()=>{ loadCalendar(); flashSync(); })
+    .on('postgres_changes',{event:'*',schema:'public',table:'cal_progress'},()=>{ loadCalState(); flashSync(); })
     .subscribe((status)=>{
       const dot=document.getElementById('syncDot'), lbl=document.getElementById('syncLabel');
       if(status==='SUBSCRIBED'){ dot.classList.remove('off'); lbl.textContent='Live'; }
@@ -591,7 +591,7 @@ function populateProjectDropdown(){
 
 async function loadCalendar(){
   if(!sb) return;
-  const {data,error}=await sb.from('calendar_template').select('*').order('month').order('grp').order('sort');
+  const {data,error}=await sb.from('cal_items').select('*').order('month').order('grp').order('sort');
   if(error){ toast('Calendar load error: '+error.message); return; }
   CAL_TEMPLATE=data;
   await loadCalState();
@@ -599,7 +599,7 @@ async function loadCalendar(){
 async function loadCalState(){
   if(!sb) return;
   CAL_YEAR=parseInt(document.getElementById('calYear').value)||CAL_YEAR;
-  const {data,error}=await sb.from('calendar_state').select('*').eq('year',CAL_YEAR);
+  const {data,error}=await sb.from('cal_progress').select('*').eq('year',CAL_YEAR);
   if(error){ toast('State load error: '+error.message); return; }
   CAL_STATE={};
   (data||[]).forEach(s=>{ CAL_STATE[s.template_id]={id:s.id,done:s.done,assignee:s.assignee||'',notes:s.notes||''}; });
@@ -673,8 +673,8 @@ async function toggleCal(tid,val){
   if(!sb) return;
   const ex=CAL_STATE[tid];
   let res;
-  if(ex&&ex.id){ res=await sb.from('calendar_state').update({done:val,updated_at:new Date().toISOString()}).eq('id',ex.id); }
-  else { res=await sb.from('calendar_state').insert({template_id:tid,year:CAL_YEAR,done:val}); }
+  if(ex&&ex.id){ res=await sb.from('cal_progress').update({done:val,updated_at:new Date().toISOString()}).eq('id',ex.id); }
+  else { res=await sb.from('cal_progress').insert({template_id:tid,year:CAL_YEAR,done:val}); }
   if(res.error){ toast('Update failed: '+res.error.message); return; }
   loadCalState();
 }
@@ -719,21 +719,21 @@ async function saveCalTask(){
 
   if(calEditingTid){
     // template fields (title, month, group, scope, project) now all editable
-    await sb.from('calendar_template').update({
+    await sb.from('cal_items').update({
       title, month, grp, project_id,
       year_specific: scope==='oneyear'?CAL_YEAR:null
     }).eq('id',calEditingTid);
     const ex=CAL_STATE[calEditingTid];
-    if(ex&&ex.id){ await sb.from('calendar_state').update({assignee,notes,updated_at:new Date().toISOString()}).eq('id',ex.id); }
-    else if(assignee||notes){ await sb.from('calendar_state').insert({template_id:calEditingTid,year:CAL_YEAR,assignee,notes}); }
+    if(ex&&ex.id){ await sb.from('cal_progress').update({assignee,notes,updated_at:new Date().toISOString()}).eq('id',ex.id); }
+    else if(assignee||notes){ await sb.from('cal_progress').insert({template_id:calEditingTid,year:CAL_YEAR,assignee,notes}); }
   } else {
-    const ins=await sb.from('calendar_template').insert({
+    const ins=await sb.from('cal_items').insert({
       month, grp, sort:999, title, calendar:CAL_VIEW, project_id,
       year_specific: scope==='oneyear'?CAL_YEAR:null
     }).select();
     if(ins.error){ document.getElementById('calSaveBtn').disabled=false; toast('Save failed: '+ins.error.message); return; }
     const newId=ins.data[0].id;
-    if(assignee||notes){ await sb.from('calendar_state').insert({template_id:newId,year:CAL_YEAR,assignee,notes}); }
+    if(assignee||notes){ await sb.from('cal_progress').insert({template_id:newId,year:CAL_YEAR,assignee,notes}); }
   }
   document.getElementById('calSaveBtn').disabled=false;
   closeCalModal(); toast('Saved'); loadCalendar();
@@ -747,7 +747,7 @@ async function deleteCalTask(){
     ? 'This is a recurring task (every year). Delete it from the template for all years?'
     : 'Delete this task?';
   if(!confirm(msg)) return;
-  const {error}=await sb.from('calendar_template').delete().eq('id',calEditingTid);
+  const {error}=await sb.from('cal_items').delete().eq('id',calEditingTid);
   if(error){ toast('Delete failed: '+error.message); return; }
   closeCalModal(); toast('Deleted'); loadCalendar();
 }
